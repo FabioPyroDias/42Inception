@@ -1,0 +1,31 @@
+services:
+  
+  nginx:
+    pass
+  
+  wordpress:
+    pass
+  
+  mariadb:
+    secrets:
+      - db_password
+      - db_root_password
+  
+volumes:
+  
+  wordpress_vol:
+    pass
+  
+  mariadb_vol:
+    pass
+
+networks:
+  pass
+
+secrets:
+
+  db_password:
+    file: ../secrets/db_password.txt
+
+  db_root_password:
+    file: ../secrets/db_root_password.txt
