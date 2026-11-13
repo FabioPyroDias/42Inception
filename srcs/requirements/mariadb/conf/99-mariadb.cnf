@@ -1,0 +1,14 @@
+# Specifies where the options below apply.
+# In this case, it's only for the MariaDB server.
+[mysqld]
+
+# Sets the network address, IP, on which the server
+#   accepts connections.
+# The Debian's default configuration is 127.0.0.1,
+#   localhost, which only accepts connections
+#   from inside container.
+# By changing the IP to 0.0.0.0, the server will now
+#   be able to listen on all network interfaces,
+#   making it possible for the WordPress container
+#   to connect to this server.
+bind-address = 0.0.0.0
