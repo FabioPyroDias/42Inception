@@ -1,31 +1,152 @@
 services:
   
-  nginx:
-    pass
+  mariadb:
+
+    # Directory with the Dockerfile of this service.
+    # Without the "build" option, "docker-compose" would try to
+    #   to pull a premade image, which would render the Dockerfile
+    #   useless, besides being forbidden by the subject
+    build: ./requirements/mariadb
+  
+    # Name of the image which needs to be the same as the service.
+    # If a tag wasn't declared, "docker-compose" would implicitly add
+    #   the tag "latest". This is forbidden by the subject.
+    # To stop that from happening, the "inception" tag is declared.
+    image: mariadb:inception
+
+    container_name: mariadb
+
+    # Restarts the container whenever it stops.
+    # Required by the subject.
+    restart: always
+
+    # Injects the variables of the .env file into the container.
+    env_file: .env
+
+    # Virtual network that this container will connect to.
+    # All of the containers will belong to the same Docker network.
+    networks:
+      - inception
+    
+    # Mounts the named volume where MariaDB stores its data.
+    # /var/lib/mysql is the standard directory where MariaDB
+    #   stores all the database files.
+    volumes:
+      - mariadb_vol:/var/lib/mysql
+
+    # Secrets are mounted as files in /run/secrets but only in the
+    #   services that list them.
+    # In this case, MariaDB needs both passwords to create the accounts.
+    secrets:
+      - db_root_password
+      - db_password
   
   wordpress:
-    pass
-  
-  mariadb:
+    build: ./requirements/wordpress
+    image: wordpress:inception
+    container_name: wordpress
+    restart: always
+    env_file: .env
+
+    networks:
+      - inception
+
     secrets:
-      - db_password
-      - db_root_password
+    - db_password
+    - wp_admin_password
+    - wp_password
+
+    # This container needs to start after the MariaDB one.
+    # It does not wait for the database to accept connections.
+    #   The "wordpress_start.sh" script does that.
+    depends_on:
+      - mariadb
+
+    # The same volume will be mounted in NGINX, on the same path.
+    # This way, both services can see the WordPress files.
+    #   - NGINX takes care of the static files.
+    #   - WordPress, with PHP-FPM runs the .php files.
+    volumes:
+    - wordpress_vol:/var/www/html
   
+  nginx:
+    build: ./requirements/nginx
+    image: nginx:inception
+    container_name: nginx
+    restart: always
+    env_file: .env
+
+    networks:
+      - inception
+    
+    # This container needs to start after the WordPress one.
+    depends_on:
+      - wordpress
+    
+    # The port published to the host.
+    # The format is "host_port:container_port".
+    ports:
+      - "443:443"
+
+    # The ":ro" is a tag specifing the file is "read only".
+    # WordPress is the only service that writes in the files.
+    volumes:
+      - wordpress_vol:/var/www/html:ro
+  
+# Named Volumes
+# They're not bind mounts. Declared here and the service refer
+#   to them by name.
+# The directories must exist before the first start.
 volumes:
   
   wordpress_vol:
-    pass
+    # By specifying the driver to be "local", this volume is managed
+    #   on the file system of the gost machine.
+    # This way, data will persist outside of the containers.
+    driver: local
+
+    # Informs the local driver which host directory to use as storage.
+    #   - "type" specifies the file system format.
+    #     Since we're only connecting a directory and not building
+    #     a new disk, there's no new file system.
+    #   - "o" stands for options. "bind" creates a link between folders.
+    #     This is useful since the wordpress and nginx services both
+    #     access this particular volume.
+    #   - "device" where the data will be stored.
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/fda-cruz/data/wordpress
   
   mariadb_vol:
-    pass
+    driver: local
+    
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/fda-cruz/data/mariadb
 
 networks:
-  pass
+# Creates a virtual network that connects the containers.
+# Each container can reach the others by their service name.
+# By declaring the "driver" option as "bridge", it acts as
+#   a virtual switch. This is what enables the containers
+#   to be all connected to each other.
+  inception:
+    driver: bridge
 
 secrets:
+# Each secret is read from a file on the host and is mounted
+#   in /run/secrets/[file_name] inside the containers that
+#   list them.
+  db_root_password:
+    file: ../secrets/db_root_password.txt
 
   db_password:
     file: ../secrets/db_password.txt
-
-  db_root_password:
-    file: ../secrets/db_root_password.txt
+  
+  wp_admin_password:
+    file: ../secrets/wp_admin_password.txt
+  
+  wp_password:
+    file: ../secrets/wp_password.txt

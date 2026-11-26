@@ -4,7 +4,7 @@
 set -e
 
 # Sets paths to mounted secrets inside the container.
-# They're declared in docker-compose.yaml and are mounted
+# They're declared in docker-compose.yml and are mounted
 #   as files in /run/secrets.
 PATH_WORDPRESS_ADMIN_PASSWORD=/run/secrets/wp_admin_password
 PATH_WORDPRESS_USER_PASSWORD=/run/secrets/wp_password
@@ -58,7 +58,7 @@ WORDPRESS_USER_PASSWORD=$(cat "$PATH_WORDPRESS_USER_PASSWORD")
 DATABASE_PASSWORD=$(cat "$PATH_DATABASE_PASSWORD")
 
 # Maximum number of times the script pings MariaDB before
-#   stopping it the script.
+#   stopping the script.
 MAX_PING_ATTEMPTS=20
 
 # Wait time between pings, in seconds.
@@ -95,10 +95,14 @@ done
 #   If it exists, Files Volume was already prepared.
 # Without this, WordPress would be downloaded and configured at every restart.
 if ! test -f /var/www/html/wp-config.php; then
-    # "--alow-root" is needed in every wp command.
+    # "--allow-root" is needed in every wp command.
 
-    # Downloads WordPress into the WORKDIR, /var/www/html. 
-    wp core download --allow-root
+    # Downloads WordPress into the WORKDIR, /var/www/html.
+    # "--force" overwrites the files that already exist.
+    # If a previous start stopped after the download and before
+    #   the "wp-config.php" was created, the files already exist and
+    #   "wp core download" would fail.
+    wp core download --force --allow-root
 
     # Creates the "wp-config.php" with the data needed to connect to MariaDB.
     wp config create --allow-root \
@@ -124,10 +128,10 @@ if ! wp core is-installed --allow-root; then
         --skip-email
 fi
 
-# To avoid printing errors or unecessary information in the terminal,
-#   the result of this search is stored in a variable.
+# Search for the second user by its login.
+# The result of this search is stored in a variable instead of being printed.
 # If the variable length is zero, then the second user doesn't exist.
-USER_EXISTS=$(wp user list --user_login="$WP_USER" --field=ID --allow-root)
+USER_EXISTS=$(wp user list --login="$WP_USER" --field=ID --allow-root)
 
 # Create the second user only if they don't exist yet.
 if [ -z "$USER_EXISTS" ]; then
@@ -136,11 +140,13 @@ if [ -z "$USER_EXISTS" ]; then
 fi
 
 # The script runs as root, but PHP-FPM runs as www-data.
-# Files created by "wp-client" belong to root. Without this, PHP-FPM
+# Files created by "wp-cli" belong to root. Without this, PHP-FPM
 #   wouldn't be able to write in these files.
 # By running this on every start, this also repairs wrong ownership.
 chown -R www-data:www-data /var/www/html
 
 # Start PHP-FPM as PID 1 and keep it in the foreground.
 # This way, Docker can properly manage the container.
-exec php-fpm8.2 -F
+# "-O" forces the PHP-FPM logs to stderr. It writes them
+#   in /var/log/php8.2-fpm.log.
+exec php-fpm8.2 -F -O
